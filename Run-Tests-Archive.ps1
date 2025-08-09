@@ -51,13 +51,11 @@ param(
     [Parameter(HelpMessage="Clean extraction directory before extracting")]
     [switch]$Clean,
     
-    [Parameter(HelpMessage="Download and use the latest release from GitHub")]
-    [switch]$Latest,
     
-    [Parameter(HelpMessage="Specify the GitHub repository (owner/name)")]
-    [string]$Repo = "Jeff-Lowrey/ChatServer",
+    [Parameter(HelpMessage="Specify a specific release tag to download (instead of latest)")]
+    [string]$Release,
     
-    [Parameter(Position=0, HelpMessage="Archive file to extract and run tests on (not required with --latest)")]
+    [Parameter(Position=0, HelpMessage="Archive file to extract and run tests on (if not provided, download latest release)")]
     [string]$ArchiveFile
 )
 
@@ -70,7 +68,7 @@ if (-not $All -and -not $Unit -and -not $Integration -and -not $Specific) {
 function Show-Help {
     Write-Host "Usage: .\Run-Tests-Archive.ps1 [options] [<archive-file>]"
     Write-Host "Run tests for the Chat Server using an archive file (zip, tar.gz, or tgz)."
-    Write-Host "If no archive file is provided and -Latest is used, the latest release will be downloaded."
+    Write-Host "If no archive file is provided, the latest release will be downloaded automatically."
     Write-Host ""
     Write-Host "Options:"
     Write-Host "  -Help, -h              Show this help message"
@@ -86,8 +84,7 @@ function Show-Help {
     Write-Host "  -Lint, -l              Run linter (ruff check)"
     Write-Host "  -ExtractDir, -e DIR    Set extraction directory (default: chat-server-test)"
     Write-Host "  -Clean                 Clean extraction directory before extracting"
-    Write-Host "  -Latest                Download and use the latest release from GitHub"
-    Write-Host "  -Repo OWNER/NAME       Specify the GitHub repository (default: Jeff-Lowrey/ChatServer)"
+    Write-Host "  -Release TAG           Specify a specific release tag to download (instead of latest)"
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "  .\Run-Tests-Archive.ps1 chat-server.zip                 Run all tests from archive"
@@ -95,8 +92,9 @@ function Show-Help {
     Write-Host "  .\Run-Tests-Archive.ps1 -Specific tests/test_api.py chat-server.zip  Run specific test from archive"
     Write-Host "  .\Run-Tests-Archive.ps1 -Lint -Format chat-server.zip    Run linter and formatter on extracted archive"
     Write-Host "  .\Run-Tests-Archive.ps1 -Clean chat-server.zip          Clean directory before extracting"
-    Write-Host "  .\Run-Tests-Archive.ps1 -Latest                         Download and run tests on the latest release"
-    Write-Host "  .\Run-Tests-Archive.ps1 -Latest -Unit                   Download and run unit tests on the latest release"
+    Write-Host "  .\Run-Tests-Archive.ps1                                 Download and run tests on the latest release"
+    Write-Host "  .\Run-Tests-Archive.ps1 -Release v1.0.0                Download and run tests on a specific release by tag"
+    Write-Host "  .\Run-Tests-Archive.ps1 -Unit                           Download and run unit tests on the latest release"
 }
 
 # If help was requested, show help and exit
@@ -105,13 +103,20 @@ if ($Help) {
     exit 0
 }
 
-# Split the repository into owner and name
-$RepoOwner = $Repo.Split('/')[0]
-$RepoName = $Repo.Split('/')[1]
+# Set the repository owner and name
+$RepoOwner = "Jeff-Lowrey"
+$RepoName = "ChatServer"
 
-# Check if we need to download the latest release
-if ($Latest) {
-    Write-Host "Downloading latest release from GitHub repository: $Repo"
+# Check if we need to download a release
+$DownloadRelease = -not $ArchiveFile
+if ($DownloadRelease) {
+    $RepoString = "$RepoOwner/$RepoName"
+    
+    if ($Release) {
+        Write-Host "Downloading release with tag '$Release' from GitHub repository: $RepoString"
+    } else {
+        Write-Host "Downloading latest release from GitHub repository: $RepoString"
+    }
     
     try {
         # Check if Invoke-RestMethod is available (PowerShell 3.0+)
@@ -119,23 +124,37 @@ if ($Latest) {
             throw "PowerShell 3.0 or later is required for downloading releases."
         }
         
-        # Get the latest release information
-        $LatestRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -ErrorAction Stop
-        
-        if (-not $LatestRelease) {
-            throw "Could not find latest release."
+        # Get the release information
+        if ($Release) {
+            # Get the specific release by tag
+            $ReleaseInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/releases/tags/$Release" -ErrorAction Stop
+            
+            if (-not $ReleaseInfo) {
+                throw "Could not find release with tag '$Release'."
+            }
+            
+            # Use the specified tag
+            $TagName = $Release
+            Write-Host "Using release: $TagName"
+        } else {
+            # Get the latest release
+            $ReleaseInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest" -ErrorAction Stop
+            
+            if (-not $ReleaseInfo) {
+                throw "Could not find latest release."
+            }
+            
+            # Extract the tag name
+            $TagName = $ReleaseInfo.tag_name
+            Write-Host "Latest release: $TagName"
         }
         
-        # Extract the tag name
-        $TagName = $LatestRelease.tag_name
-        Write-Host "Latest release: $TagName"
-        
         # Find the archive asset (prefer tar.gz but fall back to zip)
-        $Asset = $LatestRelease.assets | Where-Object { $_.name -like "*.tar.gz" } | Select-Object -First 1
+        $Asset = $ReleaseInfo.assets | Where-Object { $_.name -like "*.tar.gz" } | Select-Object -First 1
         
         if (-not $Asset) {
             # Try to find zip file if no tar.gz
-            $Asset = $LatestRelease.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
+            $Asset = $ReleaseInfo.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
         }
         
         if (-not $Asset) {
@@ -160,15 +179,9 @@ if ($Latest) {
     }
 }
 
-# Check if archive file is provided
-if (-not $ArchiveFile) {
-    Write-Host "Error: Archive file is required unless -Latest is specified." -ForegroundColor Red
-    Show-Help
-    exit 1
-}
 
-# Check if archive file exists
-if (-not (Test-Path $ArchiveFile)) {
+# Check if archive file exists when specified
+if ($ArchiveFile -and -not (Test-Path $ArchiveFile)) {
     Write-Host "Error: Archive file '$ArchiveFile' not found." -ForegroundColor Red
     exit 1
 }

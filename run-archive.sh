@@ -19,13 +19,14 @@ CLEAN=false
 NO_EXTRACT=false
 REPO_OWNER="Jeff-Lowrey"
 REPO_NAME="ChatServer"
-USE_LATEST_RELEASE=false
+USE_LATEST_RELEASE=true
+RELEASE_TAG=""
 
 # Print usage information
 show_help() {
     echo "Usage: $0 [options] [<archive-file>]"
     echo "Extract and run the Chat Server from an archive file (tar.gz or zip)."
-    echo "If no archive file is provided and --latest is used, the latest release will be downloaded."
+    echo "If no archive file is provided, the latest release will be downloaded automatically."
     echo ""
     echo "Options:"
     echo "  -h, --help              Show this help message"
@@ -39,8 +40,7 @@ show_help() {
     echo "  -v, --venv PATH         Set virtual environment path (default: venv)"
     echo "  --clean                 Clean extraction directory before extracting"
     echo "  --no-extract            Skip extraction if directory already exists"
-    echo "  --latest                Download and use the latest release from GitHub"
-    echo "  --repo OWNER/NAME       Specify the GitHub repository (default: Jeff-Lowrey/ChatServer)"
+    echo "  --release TAG           Specify a specific release tag to download (instead of latest)"
     echo ""
     echo "Examples:"
     echo "  $0 chat-server.tar.gz             Extract and run with default settings"
@@ -48,8 +48,8 @@ show_help() {
     echo "  $0 --ssl --cert ./certs/mycert.pem chat-server.tar.gz   Run with SSL enabled"
     echo "  $0 --mode http chat-server.tar.gz       Run only the HTTP server"
     echo "  $0 --clean chat-server.tar.gz           Clean directory before extraction"
-    echo "  $0 --latest                       Download and run the latest release"
-    echo "  $0 --latest --repo username/repo  Download and run the latest release from a custom repo"
+    echo "  $0                                Download and run the latest release"
+    echo "  $0 --release v1.0.0              Download and run a specific release by tag"
 }
 
 # Process command line arguments
@@ -99,19 +99,9 @@ while [[ $# -gt 0 ]]; do
             NO_EXTRACT=true
             shift
             ;;
-        --latest)
+        --release)
+            RELEASE_TAG="$2"
             USE_LATEST_RELEASE=true
-            shift
-            ;;
-        --repo)
-            REPO="$2"
-            # Split the repository into owner and name
-            REPO_OWNER=$(echo "$REPO" | cut -d '/' -f 1)
-            REPO_NAME=$(echo "$REPO" | cut -d '/' -f 2)
-            if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
-                echo "Error: Invalid repository format. Use format: owner/name"
-                exit 1
-            fi
             shift 2
             ;;
         *.tar.gz|*.tgz|*.zip)
@@ -139,35 +129,49 @@ if [ "$USE_LATEST_RELEASE" = true ]; then
     fi
 fi
 
-# Check if archive file is provided or download the latest release
-if [ -z "$ARCHIVE_FILE" ] && [ "$USE_LATEST_RELEASE" = false ]; then
-    echo "Error: Archive file is required unless --latest is specified."
-    show_help
-    exit 1
+# If archive file is provided, use it instead of downloading
+if [ -n "$ARCHIVE_FILE" ]; then
+    USE_LATEST_RELEASE=false
 fi
 
-# Download the latest release if requested
+# Download the release if requested
 if [ "$USE_LATEST_RELEASE" = true ]; then
-    echo "Downloading latest release from GitHub repository: $REPO_OWNER/$REPO_NAME"
-    
-    # Get the latest release information
-    LATEST_RELEASE=$(curl -s "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest")
-    
-    if [ -z "$LATEST_RELEASE" ] || echo "$LATEST_RELEASE" | grep -q "Not Found"; then
-        echo "Error: Could not find latest release. Check repository name and access permissions."
-        exit 1
+    if [ -z "$RELEASE_TAG" ]; then
+        echo "Downloading latest release from GitHub repository: $REPO_OWNER/$REPO_NAME"
+        
+        # Get the latest release information
+        RELEASE_INFO=$(curl -s "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest")
+        
+        if [ -z "$RELEASE_INFO" ] || echo "$RELEASE_INFO" | grep -q "Not Found"; then
+            echo "Error: Could not find latest release. Check repository name and access permissions."
+            exit 1
+        fi
+        
+        # Extract the tag name
+        TAG_NAME=$(echo "$RELEASE_INFO" | jq -r .tag_name)
+        echo "Latest release: $TAG_NAME"
+    else
+        echo "Downloading release with tag '$RELEASE_TAG' from GitHub repository: $REPO_OWNER/$REPO_NAME"
+        
+        # Get the specific release information
+        RELEASE_INFO=$(curl -s "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/tags/$RELEASE_TAG")
+        
+        if [ -z "$RELEASE_INFO" ] || echo "$RELEASE_INFO" | grep -q "Not Found"; then
+            echo "Error: Could not find release with tag '$RELEASE_TAG'. Check that the tag exists."
+            exit 1
+        fi
+        
+        # Use the specified tag name
+        TAG_NAME=$RELEASE_TAG
+        echo "Using release: $TAG_NAME"
     fi
     
-    # Extract the tag name and assets
-    TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r .tag_name)
-    echo "Latest release: $TAG_NAME"
-    
     # Find the archive asset (prefer tar.gz but fall back to zip)
-    ASSET_URL=$(echo "$LATEST_RELEASE" | jq -r '.assets[] | select(.name | endswith(".tar.gz")) | .browser_download_url')
+    ASSET_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | endswith(".tar.gz")) | .browser_download_url')
     
     if [ -z "$ASSET_URL" ]; then
         # Try to find zip file if no tar.gz
-        ASSET_URL=$(echo "$LATEST_RELEASE" | jq -r '.assets[] | select(.name | endswith(".zip")) | .browser_download_url')
+        ASSET_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | endswith(".zip")) | .browser_download_url')
     fi
     
     if [ -z "$ASSET_URL" ]; then
