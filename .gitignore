@@ -94,3 +94,9 @@ docs/_build/
 
 # Extracted files
 chat-server-extract/
+
+# Archive files
+*.tar.gz
+*.zip
+*.tar
+*.gz
