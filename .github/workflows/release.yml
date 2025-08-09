@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Create Release Archive
+      - name: Create Release Archives
         run: |
           # Display the tag name from GitHub context
           echo "Creating release for tag: ${{ github.ref_name }}"
@@ -49,6 +49,7 @@ jobs:
                     --exclude="RUN_SCRIPTS.md" \
                     --exclude="CONTRIBUTIONS.md" \
                     --exclude="chatserver-*.tar.gz" \
+                    --exclude="chatserver-*.zip" \
                     . release_files/
           
           # Check if rsync was successful
@@ -76,20 +77,42 @@ jobs:
             echo "::error::Failed to create tar.gz archive"
             exit 1
           fi
+          
+          # Create zip archive
+          echo "Creating zip archive..."
+          ZIP_NAME="../chatserver-${{ github.ref_name }}.zip"
+          zip -r "$ZIP_NAME" .
+          if [ $? -ne 0 ]; then
+            echo "::error::Failed to create zip archive"
+            exit 1
+          fi
           cd ..
           
-          # Verify archive was created and has content
+          # Verify tar.gz archive was created and has content
           if [ ! -f "chatserver-${{ github.ref_name }}.tar.gz" ]; then
-            echo "::error::Archive file was not created"
+            echo "::error::tar.gz archive file was not created"
             exit 1
           fi
           
-          ARCHIVE_SIZE=$(stat -c%s "chatserver-${{ github.ref_name }}.tar.gz" 2>/dev/null || stat -f%z "chatserver-${{ github.ref_name }}.tar.gz")
-          if [ "$ARCHIVE_SIZE" -lt 1000 ]; then
-            echo "::warning::Archive file is suspiciously small: $ARCHIVE_SIZE bytes"
+          TARGZ_SIZE=$(stat -c%s "chatserver-${{ github.ref_name }}.tar.gz" 2>/dev/null || stat -f%z "chatserver-${{ github.ref_name }}.tar.gz")
+          if [ "$TARGZ_SIZE" -lt 1000 ]; then
+            echo "::warning::tar.gz archive file is suspiciously small: $TARGZ_SIZE bytes"
           fi
           
-          echo "Archive created: chatserver-${{ github.ref_name }}.tar.gz ($ARCHIVE_SIZE bytes)"
+          # Verify zip archive was created and has content
+          if [ ! -f "chatserver-${{ github.ref_name }}.zip" ]; then
+            echo "::error::zip archive file was not created"
+            exit 1
+          fi
+          
+          ZIP_SIZE=$(stat -c%s "chatserver-${{ github.ref_name }}.zip" 2>/dev/null || stat -f%z "chatserver-${{ github.ref_name }}.zip")
+          if [ "$ZIP_SIZE" -lt 1000 ]; then
+            echo "::warning::zip archive file is suspiciously small: $ZIP_SIZE bytes"
+          fi
+          
+          echo "Archives created:"
+          echo "- chatserver-${{ github.ref_name }}.tar.gz ($TARGZ_SIZE bytes)"
+          echo "- chatserver-${{ github.ref_name }}.zip ($ZIP_SIZE bytes)"
 
       # Set file permissions and verify run scripts for individual release
       - name: Prepare Run Scripts for Release
@@ -167,6 +190,7 @@ jobs:
         with:
           files: |
             chatserver-${{ github.ref_name }}.tar.gz
+            chatserver-${{ github.ref_name }}.zip
             run-archive.sh
             run-docker.sh
             run-tests-archive.sh
@@ -179,7 +203,9 @@ jobs:
             # ChatServer ${{ github.ref_name }}
             
             This release includes:
-            - The main ChatServer application archive (`chatserver-${{ github.ref_name }}.tar.gz`)
+            - The main ChatServer application archives:
+              - Linux/macOS: `chatserver-${{ github.ref_name }}.tar.gz`
+              - Windows: `chatserver-${{ github.ref_name }}.zip`
             - Individual run scripts for Linux/macOS (`.sh` files)
             - Individual run scripts for Windows (`.ps1` files)
             - Documentation for all run scripts (`RUN_SCRIPTS.md`)
@@ -204,6 +230,7 @@ jobs:
         run: |
           echo "Release created successfully!"
           echo "Release assets should include:"
-          echo "- chatserver-${{ github.ref_name }}.tar.gz (main archive)"
+          echo "- chatserver-${{ github.ref_name }}.tar.gz (Linux/macOS archive)"
+          echo "- chatserver-${{ github.ref_name }}.zip (Windows archive)"
           echo "- All run scripts as individual files"
           echo "- RUN_SCRIPTS.md as an individual file"

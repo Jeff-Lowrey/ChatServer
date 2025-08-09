@@ -51,12 +51,13 @@ REPO_OWNER="Jeff-Lowrey"
 REPO_NAME="ChatServer"
 USE_LATEST_RELEASE=true
 RELEASE_TAG=""
+REMOVE_ARCHIVE=true # Default to removing archive file after extraction
 
 # Print usage information
 show_help() {
     log "Displaying help information"
     echo "Usage: $0 [options]"
-    echo "Extract and run the Chat Server from an archive file (tar.gz or zip)."
+    echo "Extract and run the Chat Server from a tar.gz archive file."
     echo "By default, the latest release will be downloaded automatically."
     echo ""
     echo "Options:"
@@ -73,6 +74,7 @@ show_help() {
     echo "  -v, --venv PATH         Set virtual environment path (default: venv)"
     echo "  --clean                 Clean extraction directory before extracting"
     echo "  --no-extract            Skip extraction if directory already exists"
+    echo "  --keep-archive          Keep archive file after extraction (default: remove)"
     echo "  --release TAG           Specify a specific release tag to download (instead of latest)"
     echo "  --archive FILE          Specify a local archive file to use instead of downloading"
     echo ""
@@ -132,6 +134,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-extract)
             NO_EXTRACT=true
+            shift
+            ;;
+        --keep-archive)
+            REMOVE_ARCHIVE=false
             shift
             ;;
         --release)
@@ -222,19 +228,14 @@ if [ "$USE_LATEST_RELEASE" = true ]; then
         echo "Using release: $TAG_NAME"
     fi
     
-    # Find the archive asset (prefer tar.gz but fall back to zip)
+    # Find the tar.gz archive asset for bash scripts
     log "Searching for tar.gz asset in release"
     ASSET_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | endswith(".tar.gz")) | .browser_download_url')
     
     if [ -z "$ASSET_URL" ]; then
-        log "No tar.gz asset found, looking for zip file"
-        # Try to find zip file if no tar.gz
-        ASSET_URL=$(echo "$RELEASE_INFO" | jq -r '.assets[] | select(.name | endswith(".zip")) | .browser_download_url')
-    fi
-    
-    if [ -z "$ASSET_URL" ]; then
-        log "ERROR: No valid release asset found"
-        echo "Error: Could not find a valid release asset (tar.gz or zip)."
+        log "ERROR: No tar.gz asset found in release"
+        echo "Error: Could not find a tar.gz asset in the release."
+        echo "This script only supports tar.gz archives. For ZIP archives, please use Run-Archive.ps1 on Windows."
         exit 1
     fi
     
@@ -317,23 +318,19 @@ if [ ! -d "$EXTRACT_DIR" ] || [ "$NO_EXTRACT" = false ]; then
     echo "Extracting archive..."
     mkdir -p "$EXTRACT_DIR"
     
-    # Extract based on file extension
+    # Extract archive (tar.gz only for bash scripts)
     if [[ "$ARCHIVE_FILE" == *.tar.gz || "$ARCHIVE_FILE" == *.tgz ]]; then
         tar -xzf "$ARCHIVE_FILE" -C "$EXTRACT_DIR" --strip-components=1
-    elif [[ "$ARCHIVE_FILE" == *.zip ]]; then
-        unzip -q "$ARCHIVE_FILE" -d "$EXTRACT_DIR"
         
-        # If the zip has a single directory at the root, move its contents up
-        FIRST_DIR=$(ls -d "$EXTRACT_DIR"/*/ 2>/dev/null | head -1)
-        if [ -d "$FIRST_DIR" ] && [ $(ls -la "$EXTRACT_DIR" | wc -l) -eq 3 ]; then
-            TMP_DIR=$(mktemp -d)
-            mv "$FIRST_DIR"/* "$TMP_DIR"/
-            rm -rf "$FIRST_DIR"
-            mv "$TMP_DIR"/* "$EXTRACT_DIR"/
-            rmdir "$TMP_DIR"
+        # Remove archive file if specified
+        if [ "$REMOVE_ARCHIVE" = true ] && [ "$USE_LATEST_RELEASE" = true ]; then
+            log "Removing archive file: $ARCHIVE_FILE"
+            echo "Removing archive file after extraction..."
+            rm -f "$ARCHIVE_FILE"
         fi
     else
-        echo "Error: Unsupported archive format. Use .tar.gz, .tgz, or .zip."
+        echo "Error: Unsupported archive format. This script only supports .tar.gz or .tgz archives."
+        echo "For ZIP archives, please use the PowerShell script Run-Archive.ps1 on Windows."
         exit 1
     fi
 fi
@@ -428,4 +425,3 @@ else
     echo "Make sure the archive has the correct structure."
     exit 1
 fi
-

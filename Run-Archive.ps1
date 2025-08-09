@@ -2,8 +2,9 @@
 # Run-Archive.ps1 - PowerShell script to extract and run the archived Chat Server
 
 # Default logging configuration
-$LogFile = $LoggingFile
-$LogMode = $LoggingMode # Options: file, console, both, none
+# Set default logging configuration if not provided as parameters
+$LogFile = if ($PSBoundParameters.ContainsKey('LoggingFile')) { $LoggingFile } else { "Run-Archive.log" }
+$LogMode = if ($PSBoundParameters.ContainsKey('LoggingMode')) { $LoggingMode } else { "both" } # Options: file, console, both, none
 
 function Write-Log {
     param (
@@ -86,6 +87,9 @@ param(
     [Parameter(HelpMessage="Skip extraction if directory already exists")]
     [switch]$NoExtract,
     
+    [Parameter(HelpMessage="Keep archive file after extraction")]
+    [switch]$KeepArchive,
+    
     [Parameter(HelpMessage="Specify a specific release tag to download (instead of latest)")]
     [string]$Release,
     
@@ -103,7 +107,7 @@ param(
 # Print usage information
 function Show-Help {
     Write-Host "Usage: .\Run-Archive.ps1 [options]"
-    Write-Host "Extract and run the Chat Server from an archive file (zip, tar.gz, or tgz)."
+    Write-Host "Extract and run the Chat Server from a ZIP archive file."
     Write-Host "By default, the latest release will be downloaded automatically."
     Write-Host ""
     Write-Host "Options:"
@@ -120,6 +124,7 @@ function Show-Help {
     Write-Host "  -VenvPath, -v PATH     Set virtual environment path (default: venv)"
     Write-Host "  -Clean                 Clean extraction directory before extracting"
     Write-Host "  -NoExtract             Skip extraction if directory already exists"
+    Write-Host "  -KeepArchive           Keep archive file after extraction (default: remove)"
     Write-Host "  -Release TAG           Specify a specific release tag to download (instead of latest)"
     Write-Host ""
     Write-Host "Examples:"
@@ -145,7 +150,10 @@ $RepoOwner = "Jeff-Lowrey"
 $RepoName = "ChatServer"
 
 # Check if we need to download a release
+# Initialize variables
 $DownloadRelease = -not $Archive
+$DownloadedArchive = $false
+
 if ($DownloadRelease) {
     $RepoString = "$RepoOwner/$RepoName"
     
@@ -194,19 +202,13 @@ if ($DownloadRelease) {
             Write-Host "Latest release: $TagName"
         }
         
-        # Find the archive asset (prefer tar.gz but fall back to zip)
-        Write-Log "Searching for tar.gz asset in release"
-        $Asset = $ReleaseInfo.assets | Where-Object { $_.name -like "*.tar.gz" } | Select-Object -First 1
+        # Find the archive asset (only ZIP for PowerShell scripts)
+        Write-Log "Searching for ZIP asset in release"
+        $Asset = $ReleaseInfo.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
         
         if (-not $Asset) {
-            Write-Log "No tar.gz asset found, looking for zip file"
-            # Try to find zip file if no tar.gz
-            $Asset = $ReleaseInfo.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
-        }
-        
-        if (-not $Asset) {
-            Write-Log "ERROR: No valid release asset found"
-            throw "Could not find a valid release asset (tar.gz or zip)."
+            Write-Log "ERROR: No ZIP asset found in release"
+            throw "Could not find a ZIP asset in the release. PowerShell scripts only support ZIP archives. For tar.gz archives, please use the bash script run-archive.sh on Linux/macOS."
         }
         
         # Extract the filename and download URL
@@ -222,6 +224,9 @@ if ($DownloadRelease) {
         $Archive = $ArchiveFilename
         Write-Log "Download complete: $Archive"
         Write-Host "Download complete: $Archive"
+        
+        # Mark that this is a downloaded file that should be removed after extraction
+        $DownloadedArchive = $true
     }
     catch {
         Write-Log "ERROR: Failed to download release - $_"
@@ -317,48 +322,16 @@ if (-not (Test-Path $ExtractDir) -or -not $NoExtract) {
             Get-ChildItem -Path $TempDir | Move-Item -Destination $ExtractDir
             Remove-Item -Path $TempDir -Force
         }
-    } elseif ($Extension -eq ".gz" -or $Archive -match "\.tar\.gz$" -or $Archive -match "\.tgz$") {
-        # Use Windows built-in compression for tar.gz
-        try {
-            # First try to use tar command (available in Windows 10 1803+)
-            if (Get-Command tar -ErrorAction SilentlyContinue) {
-                Write-Host "Using built-in tar command..."
-                tar -xzf "$Archive" -C "$ExtractDir"
-            } else {
-                # Fall back to .NET and PowerShell
-                Write-Host "Using .NET compression..."
-                
-                # Create a temporary directory for intermediate steps
-                $TempDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.Guid]::NewGuid().ToString())
-                New-Item -Path $TempDir -ItemType Directory -Force | Out-Null
-                
-                # Decompress .gz to temporary directory
-                Add-Type -AssemblyName System.IO.Compression
-                Add-Type -AssemblyName System.IO.Compression.FileSystem
-                
-                # Use .NET classes for GZip decompression
-                $GzipStream = New-Object System.IO.Compression.GZipStream([System.IO.File]::OpenRead($Archive), [System.IO.Compression.CompressionMode]::Decompress)
-                $TargetStream = [System.IO.File]::Create([System.IO.Path]::Combine($TempDir, "temp.tar"))
-                $GzipStream.CopyTo($TargetStream)
-                $GzipStream.Close()
-                $TargetStream.Close()
-                
-                # Extract tar file using COM object for the Windows shell
-                $shell = New-Object -ComObject Shell.Application
-                $tarFile = $shell.NameSpace([System.IO.Path]::Combine($TempDir, "temp.tar"))
-                $destination = $shell.NameSpace($ExtractDir)
-                $destination.CopyHere($tarFile.Items())
-                
-                # Clean up temporary directory
-                Remove-Item -Path $TempDir -Recurse -Force
-            }
-        } catch {
-            Write-Host "Error extracting tar.gz file: $_" -ForegroundColor Red
-            Write-Host "If this continues to fail, please install 7-Zip and try again." -ForegroundColor Yellow
-            exit 1
+        
+        # Remove the archive file if it was downloaded and we're not keeping it
+        if ($DownloadedArchive -and -not $KeepArchive) {
+            Write-Log "Removing downloaded archive file: $Archive"
+            Write-Host "Removing archive file after extraction..."
+            Remove-Item -Path $Archive -Force
         }
     } else {
-        Write-Host "Error: Unsupported archive format. Use .zip, .tar.gz, or .tgz." -ForegroundColor Red
+        Write-Host "Error: Unsupported archive format. This script only supports .zip archives." -ForegroundColor Red
+        Write-Host "For tar.gz archives, please use the bash script run-archive.sh on Linux/macOS." -ForegroundColor Yellow
         exit 1
     }
 }

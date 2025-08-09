@@ -158,9 +158,11 @@ pip install -r requirements.txt
 ##### From Archive File
 ```bash
 # Extract the archive file
-tar -xzf chat-server.tar.gz   # For .tar.gz file
-# OR
-unzip chat-server.zip         # For .zip file
+# For Linux/macOS:
+tar -xzf chat-server.tar.gz
+
+# OR for Windows:
+unzip chat-server.zip
 
 # Navigate to the extracted directory
 cd chat-server
@@ -335,7 +337,7 @@ See [RUN_SCRIPTS.md](RUN_SCRIPTS.md) for detailed information on running tests w
 
 ### Archive-based Testing
 
-Run tests directly from an archive file (tar.gz, tgz, or zip) without unpacking it manually. This is useful for testing released versions of the Chat Server or verifying the integrity of distribution packages.
+Run tests directly from an archive file without unpacking it manually. Use bash scripts with tar.gz files on Linux/macOS, or PowerShell scripts with ZIP files on Windows. This is useful for testing released versions of the Chat Server or verifying the integrity of distribution packages.
 
 See [RUN_SCRIPTS.md](RUN_SCRIPTS.md) for detailed information on the archive testing scripts.
 
