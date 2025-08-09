@@ -1,0 +1,56 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create Release Archive
+        run: |
+          # Create a temporary directory for the release files
+          mkdir -p release_files
+          
+          # Copy all necessary files excluding run scripts
+          rsync -av --exclude="run-*.sh" \
+                    --exclude="Run-*.ps1" \
+                    --exclude=".git" \
+                    --exclude=".github" \
+                    --exclude="run-archive.sh" \
+                    --exclude="run-docker.sh" \
+                    --exclude="run-tests-archive.sh" \
+                    --exclude="Run-Archive.ps1" \
+                    --exclude="Run-Docker.ps1" \
+                    --exclude="Run-Tests-Archive.ps1" \
+                    . release_files/
+          
+          # Create tar.gz archive
+          cd release_files
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          tar -czf "../chatserver-${TAG_NAME}.tar.gz" .
+          cd ..
+          
+          echo "RELEASE_FILE=chatserver-${TAG_NAME}.tar.gz" >> $GITHUB_ENV
+          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ env.RELEASE_FILE }}
+          name: ChatServer ${{ env.TAG_NAME }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
