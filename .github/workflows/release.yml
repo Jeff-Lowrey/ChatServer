@@ -22,7 +22,7 @@ jobs:
           # Create a temporary directory for the release files
           mkdir -p release_files
           
-          # Copy all necessary files excluding run scripts
+          # Copy all necessary files excluding run scripts and their documentation
           rsync -av --exclude="run-*.sh" \
                     --exclude="Run-*.ps1" \
                     --exclude=".git" \
@@ -33,6 +33,7 @@ jobs:
                     --exclude="Run-Archive.ps1" \
                     --exclude="Run-Docker.ps1" \
                     --exclude="Run-Tests-Archive.ps1" \
+                    --exclude="RUN_SCRIPTS.md" \
                     . release_files/
           
           # Create tar.gz archive
@@ -55,6 +56,7 @@ jobs:
             Run-Archive.ps1
             Run-Docker.ps1
             Run-Tests-Archive.ps1
+            RUN_SCRIPTS.md
           name: ChatServer ${{ env.TAG_NAME }}
           draft: false
           prerelease: false

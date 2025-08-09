@@ -1,5 +1,42 @@
 #
 # Run-Archive.ps1 - PowerShell script to extract and run the archived Chat Server
+
+# Default logging configuration
+$LogFile = $LoggingFile
+$LogMode = $LoggingMode # Options: file, console, both, none
+
+function Write-Log {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$Message
+    )
+    
+    $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $LogMessage = "[$Timestamp] $Message"
+    
+    switch ($LogMode) {
+        "file" {
+            $LogMessage | Out-File -FilePath $LogFile -Append
+        }
+        "console" {
+            Write-Host $LogMessage
+        }
+        "both" {
+            Write-Host $LogMessage
+            $LogMessage | Out-File -FilePath $LogFile -Append
+        }
+        "none" {
+            # Do nothing
+        }
+        default {
+            # Default to both if invalid mode specified
+            Write-Host $LogMessage
+            $LogMessage | Out-File -FilePath $LogFile -Append
+        }
+    }
+}
+
+Write-Log "Starting Run-Archive.ps1 script"
 # Author: Jeff Lowrey <jeff@jaral.org>
 # Date: 2025-08-09
 #
@@ -49,25 +86,33 @@ param(
     [Parameter(HelpMessage="Skip extraction if directory already exists")]
     [switch]$NoExtract,
     
-    
     [Parameter(HelpMessage="Specify a specific release tag to download (instead of latest)")]
     [string]$Release,
     
-    [Parameter(Position=0, HelpMessage="Archive file to extract and run (if not provided, download latest release)")]
-    [string]$ArchiveFile
+    [Parameter(HelpMessage="Specify a local archive file to use instead of downloading")]
+    [string]$Archive,
+    
+    [Parameter(HelpMessage="Set logging mode: file, console, both, none")]
+    [ValidateSet("file", "console", "both", "none")]
+    [string]$LoggingMode = "both",
+    
+    [Parameter(HelpMessage="Set log file path")]
+    [string]$LoggingFile = "Run-Archive.log"
 )
 
 # Print usage information
 function Show-Help {
-    Write-Host "Usage: .\Run-Archive.ps1 [options] [<archive-file>]"
+    Write-Host "Usage: .\Run-Archive.ps1 [options]"
     Write-Host "Extract and run the Chat Server from an archive file (zip, tar.gz, or tgz)."
-    Write-Host "If no archive file is provided, the latest release will be downloaded automatically."
+    Write-Host "By default, the latest release will be downloaded automatically."
     Write-Host ""
     Write-Host "Options:"
     Write-Host "  -Help, -h              Show this help message"
     Write-Host "  -SocketPort, -s PORT   Set socket server port (default: 10010)"
     Write-Host "  -HttpPort, -w PORT     Set HTTP server port (default: 8000)"
     Write-Host "  -ConfigFile, -c FILE   Use custom config file (default: config.properties)"
+    Write-Host "  -LoggingMode MODE      Set logging mode: file, console, both, none (default: both)"
+    Write-Host "  -LoggingFile FILE      Set log file path (default: Run-Archive.log)"
     Write-Host "  -SSL                   Enable SSL"
     Write-Host "  -Cert PATH             Path to SSL certificate (required if SSL enabled)"
     Write-Host "  -Mode, -m MODE         Set server mode: socket, http, both (default: both)"
@@ -78,17 +123,19 @@ function Show-Help {
     Write-Host "  -Release TAG           Specify a specific release tag to download (instead of latest)"
     Write-Host ""
     Write-Host "Examples:"
-    Write-Host "  .\Run-Archive.ps1 chat-server.zip                 Extract and run with default settings"
-    Write-Host "  .\Run-Archive.ps1 -SocketPort 9000 chat-server.zip    Run with custom socket port"
-    Write-Host "  .\Run-Archive.ps1 -SSL -Cert .\certs\mycert.pem chat-server.zip   Run with SSL enabled"
-    Write-Host "  .\Run-Archive.ps1 -Mode http chat-server.zip      Run only the HTTP server"
-    Write-Host "  .\Run-Archive.ps1 -Clean chat-server.zip          Clean directory before extraction"
+    Write-Host "  .\Run-Archive.ps1 -Archive chat-server.zip       Extract and run with local archive file"
+    Write-Host "  .\Run-Archive.ps1 -SocketPort 9000 -Archive chat-server.zip    Run with custom socket port"
+    Write-Host "  .\Run-Archive.ps1 -SSL -Cert .\certs\mycert.pem -Archive chat-server.zip   Run with SSL enabled"
+    Write-Host "  .\Run-Archive.ps1 -Mode http -Archive chat-server.zip      Run only the HTTP server"
+    Write-Host "  .\Run-Archive.ps1 -Clean -Archive chat-server.zip          Clean directory before extraction"
     Write-Host "  .\Run-Archive.ps1                                 Download and run the latest release"
     Write-Host "  .\Run-Archive.ps1 -Release v1.0.0                 Download and run a specific release by tag"
+    Write-Host "  .\Run-Archive.ps1 -LoggingMode file -LoggingFile logs.txt  Use custom logging settings"
 }
 
 # If help was requested, show help and exit
 if ($Help) {
+    Write-Log "Displaying help information"
     Show-Help
     exit 0
 }
@@ -98,13 +145,15 @@ $RepoOwner = "Jeff-Lowrey"
 $RepoName = "ChatServer"
 
 # Check if we need to download a release
-$DownloadRelease = -not $ArchiveFile
+$DownloadRelease = -not $Archive
 if ($DownloadRelease) {
     $RepoString = "$RepoOwner/$RepoName"
     
     if ($Release) {
+        Write-Log "Downloading release with tag '$Release' from GitHub repository: $RepoString"
         Write-Host "Downloading release with tag '$Release' from GitHub repository: $RepoString"
     } else {
+        Write-Log "Downloading latest release from GitHub repository: $RepoString"
         Write-Host "Downloading latest release from GitHub repository: $RepoString"
     }
     
@@ -117,37 +166,46 @@ if ($DownloadRelease) {
         # Get the release information
         if ($Release) {
             # Get the specific release by tag
+            Write-Log "Fetching release information for tag: $Release"
             $ReleaseInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/releases/tags/$Release" -ErrorAction Stop
             
             if (-not $ReleaseInfo) {
+                Write-Log "ERROR: Could not find release with tag '$Release'"
                 throw "Could not find release with tag '$Release'."
             }
             
             # Use the specified tag
             $TagName = $Release
+            Write-Log "Using release: $TagName"
             Write-Host "Using release: $TagName"
         } else {
             # Get the latest release
+            Write-Log "Fetching latest release information from GitHub API"
             $ReleaseInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/releases/latest" -ErrorAction Stop
             
             if (-not $ReleaseInfo) {
+                Write-Log "ERROR: Could not find latest release"
                 throw "Could not find latest release."
             }
             
             # Extract the tag name
             $TagName = $ReleaseInfo.tag_name
+            Write-Log "Found latest release: $TagName"
             Write-Host "Latest release: $TagName"
         }
         
         # Find the archive asset (prefer tar.gz but fall back to zip)
+        Write-Log "Searching for tar.gz asset in release"
         $Asset = $ReleaseInfo.assets | Where-Object { $_.name -like "*.tar.gz" } | Select-Object -First 1
         
         if (-not $Asset) {
+            Write-Log "No tar.gz asset found, looking for zip file"
             # Try to find zip file if no tar.gz
             $Asset = $ReleaseInfo.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
         }
         
         if (-not $Asset) {
+            Write-Log "ERROR: No valid release asset found"
             throw "Could not find a valid release asset (tar.gz or zip)."
         }
         
@@ -155,15 +213,18 @@ if ($DownloadRelease) {
         $ArchiveFilename = $Asset.name
         $DownloadUrl = $Asset.browser_download_url
         
+        Write-Log "Downloading asset: $ArchiveFilename from $DownloadUrl"
         Write-Host "Downloading: $ArchiveFilename from $DownloadUrl"
         
         # Download the asset
         Invoke-WebRequest -Uri $DownloadUrl -OutFile $ArchiveFilename -ErrorAction Stop
         
-        $ArchiveFile = $ArchiveFilename
-        Write-Host "Download complete: $ArchiveFile"
+        $Archive = $ArchiveFilename
+        Write-Log "Download complete: $Archive"
+        Write-Host "Download complete: $Archive"
     }
     catch {
+        Write-Log "ERROR: Failed to download release - $_"
         Write-Host "Error: Failed to download release. $_" -ForegroundColor Red
         exit 1
     }
@@ -171,28 +232,35 @@ if ($DownloadRelease) {
 
 
 # Check if archive file exists when specified
-if ($ArchiveFile -and -not (Test-Path $ArchiveFile)) {
-    Write-Host "Error: Archive file '$ArchiveFile' not found." -ForegroundColor Red
+Write-Log "Checking if archive file exists: $Archive"
+if ($Archive -and -not (Test-Path $Archive)) {
+    Write-Log "ERROR: Archive file not found"
+    Write-Host "Error: Archive file '$Archive' not found." -ForegroundColor Red
     exit 1
 }
 
 # Validate arguments
+Write-Log "Validating arguments"
 if ($SSL -and -not $Cert) {
+    Write-Log "ERROR: SSL enabled but no certificate path provided"
     Write-Host "Error: SSL certificate path is required when SSL is enabled." -ForegroundColor Red
     Write-Host "Use -Cert PATH to specify the certificate path." -ForegroundColor Red
     exit 1
 }
 
 # Check if Python is installed
+Write-Log "Checking for Python installation"
 $PythonCmd = $null
 foreach ($cmd in @("python", "python3", "py")) {
     if (Get-Command $cmd -ErrorAction SilentlyContinue) {
         $PythonCmd = $cmd
+        Write-Log "Found Python command: $cmd"
         break
     }
 }
 
 if ($null -eq $PythonCmd) {
+    Write-Log "ERROR: Python is not installed or not in PATH"
     Write-Host "Error: Python is not installed or not in PATH. Please install Python and try again." -ForegroundColor Red
     exit 1
 }
@@ -206,30 +274,36 @@ if ($PythonVersion -lt 3) {
 
 # Clean extraction directory if requested
 if ($Clean -and (Test-Path $ExtractDir)) {
+    Write-Log "Cleaning extraction directory: $ExtractDir"
     Write-Host "Cleaning extraction directory..."
     Remove-Item -Path $ExtractDir -Recurse -Force
 }
 
 # Extract archive if needed
 if (-not (Test-Path $ExtractDir) -or -not $NoExtract) {
+    Write-Log "Extracting archive to $ExtractDir"
     Write-Host "Extracting archive..."
     
     # Create extraction directory if it doesn't exist
     if (-not (Test-Path $ExtractDir)) {
+        Write-Log "Creating extraction directory"
         New-Item -Path $ExtractDir -ItemType Directory -Force | Out-Null
     }
     
     # Extract based on file extension
-    $Extension = [System.IO.Path]::GetExtension($ArchiveFile).ToLower()
+    $Extension = [System.IO.Path]::GetExtension($Archive).ToLower()
     
     if ($Extension -eq ".zip") {
+        Write-Log "Archive is zip format, using PowerShell extraction"
         # Check if Expand-Archive is available (PowerShell 5.0+)
         if (Get-Command Expand-Archive -ErrorAction SilentlyContinue) {
-            Expand-Archive -Path $ArchiveFile -DestinationPath $ExtractDir -Force
+            Write-Log "Using Expand-Archive cmdlet"
+            Expand-Archive -Path $Archive -DestinationPath $ExtractDir -Force
         } else {
             # Fall back to using .NET for older PowerShell versions
+            Write-Log "Using .NET ZipFile class for extraction"
             Add-Type -AssemblyName System.IO.Compression.FileSystem
-            [System.IO.Compression.ZipFile]::ExtractToDirectory($ArchiveFile, $ExtractDir)
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($Archive, $ExtractDir)
         }
         
         # If the zip has a single directory at the root, move its contents up
@@ -243,31 +317,44 @@ if (-not (Test-Path $ExtractDir) -or -not $NoExtract) {
             Get-ChildItem -Path $TempDir | Move-Item -Destination $ExtractDir
             Remove-Item -Path $TempDir -Force
         }
-    } elseif ($Extension -eq ".gz" -or $ArchiveFile -match "\.tar\.gz$" -or $ArchiveFile -match "\.tgz$") {
-        # Check if 7-Zip is installed
-        $7zPath = $null
-        foreach ($path in @("C:\Program Files\7-Zip\7z.exe", "C:\Program Files (x86)\7-Zip\7z.exe")) {
-            if (Test-Path $path) {
-                $7zPath = $path
-                break
+    } elseif ($Extension -eq ".gz" -or $Archive -match "\.tar\.gz$" -or $Archive -match "\.tgz$") {
+        # Use Windows built-in compression for tar.gz
+        try {
+            # First try to use tar command (available in Windows 10 1803+)
+            if (Get-Command tar -ErrorAction SilentlyContinue) {
+                Write-Host "Using built-in tar command..."
+                tar -xzf "$Archive" -C "$ExtractDir"
+            } else {
+                # Fall back to .NET and PowerShell
+                Write-Host "Using .NET compression..."
+                
+                # Create a temporary directory for intermediate steps
+                $TempDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.Guid]::NewGuid().ToString())
+                New-Item -Path $TempDir -ItemType Directory -Force | Out-Null
+                
+                # Decompress .gz to temporary directory
+                Add-Type -AssemblyName System.IO.Compression
+                Add-Type -AssemblyName System.IO.Compression.FileSystem
+                
+                # Use .NET classes for GZip decompression
+                $GzipStream = New-Object System.IO.Compression.GZipStream([System.IO.File]::OpenRead($Archive), [System.IO.Compression.CompressionMode]::Decompress)
+                $TargetStream = [System.IO.File]::Create([System.IO.Path]::Combine($TempDir, "temp.tar"))
+                $GzipStream.CopyTo($TargetStream)
+                $GzipStream.Close()
+                $TargetStream.Close()
+                
+                # Extract tar file using COM object for the Windows shell
+                $shell = New-Object -ComObject Shell.Application
+                $tarFile = $shell.NameSpace([System.IO.Path]::Combine($TempDir, "temp.tar"))
+                $destination = $shell.NameSpace($ExtractDir)
+                $destination.CopyHere($tarFile.Items())
+                
+                # Clean up temporary directory
+                Remove-Item -Path $TempDir -Recurse -Force
             }
-        }
-        
-        if ($7zPath) {
-            # Use 7-Zip to extract
-            & $7zPath x "$ArchiveFile" -o"$ExtractDir" -y
-            
-            # If it's a .tar.gz or .tgz, extract the tar file
-            if ($ArchiveFile -match "\.tar\.gz$" -or $ArchiveFile -match "\.tgz$") {
-                $TarFile = Get-ChildItem -Path $ExtractDir -Filter "*.tar" | Select-Object -First 1
-                if ($TarFile) {
-                    & $7zPath x "$($TarFile.FullName)" -o"$ExtractDir" -y
-                    Remove-Item -Path $TarFile.FullName -Force
-                }
-            }
-        } else {
-            Write-Host "Error: 7-Zip is required to extract .tar.gz or .tgz files on Windows." -ForegroundColor Red
-            Write-Host "Please install 7-Zip from https://www.7-zip.org/" -ForegroundColor Red
+        } catch {
+            Write-Host "Error extracting tar.gz file: $_" -ForegroundColor Red
+            Write-Host "If this continues to fail, please install 7-Zip and try again." -ForegroundColor Yellow
             exit 1
         }
     } else {
@@ -277,14 +364,18 @@ if (-not (Test-Path $ExtractDir) -or -not $NoExtract) {
 }
 
 # Change to extraction directory
+Write-Log "Changing to extraction directory: $ExtractDir"
 Set-Location -Path $ExtractDir
 
 # Check if requirements.txt exists
+Write-Log "Checking for requirements.txt"
 if (-not (Test-Path "requirements.txt")) {
+    Write-Log "WARNING: requirements.txt not found"
     Write-Host "Warning: requirements.txt not found. The application may not work properly." -ForegroundColor Yellow
 } else {
     # Create and activate virtual environment
     if (-not (Test-Path $VenvPath)) {
+        Write-Log "Creating virtual environment at $VenvPath"
         Write-Host "Creating virtual environment..."
         
         # Determine venv creation command
@@ -305,13 +396,20 @@ if (-not (Test-Path "requirements.txt")) {
     
     # Determine activation script
     $ActivateScript = Join-Path -Path $VenvPath -ChildPath "Scripts\Activate.ps1"
+    Write-Log "Activating virtual environment from $ActivateScript"
     
     if (Test-Path $ActivateScript) {
         Write-Host "Activating virtual environment..."
         & $ActivateScript
         
+        Write-Log "Installing dependencies from requirements.txt"
         Write-Host "Installing dependencies..."
         pip install -r requirements.txt
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "ERROR: Failed to install dependencies"
+            Write-Host "Error: Failed to install dependencies." -ForegroundColor Red
+            exit 1
+        }
     } else {
         Write-Host "Error: Activation script not found at $ActivateScript" -ForegroundColor Red
         exit 1
@@ -319,11 +417,14 @@ if (-not (Test-Path "requirements.txt")) {
 }
 
 # Create config file if it doesn't exist
+Write-Log "Checking for config file: $ConfigFile"
 if (-not (Test-Path $ConfigFile)) {
     if (Test-Path "config.example.properties") {
+        Write-Log "Creating config file from example"
         Write-Host "Config file not found, creating one from example..."
         Copy-Item "config.example.properties" $ConfigFile
     } else {
+        Write-Log "WARNING: Neither config file nor example config found"
         Write-Host "Warning: Neither config file nor example config found." -ForegroundColor Yellow
         Write-Host "Using default configuration." -ForegroundColor Yellow
     }
@@ -351,13 +452,17 @@ if ($SSL) {
 }
 
 # Run the server
+Write-Log "Starting Chat Server with socket port $SocketPort and HTTP port $HttpPort"
 Write-Host "Starting Chat Server..."
 Write-Host "Socket server will be available at: localhost:${SocketPort}"
 Write-Host "HTTP server will be available at: http://localhost:${HttpPort}"
 
 if (Test-Path "src\main.py") {
+    Write-Log "Executing main.py with config $ConfigFile"
     & $PythonCmd -m src.main --config $ConfigFile
+    Write-Log "Server execution completed with exit code $LASTEXITCODE"
 } else {
+    Write-Log "ERROR: main.py not found in src directory"
     Write-Host "Error: Could not find the main.py file in the src directory." -ForegroundColor Red
     Write-Host "Make sure the archive has the correct structure." -ForegroundColor Red
     exit 1

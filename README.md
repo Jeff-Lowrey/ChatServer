@@ -284,85 +284,13 @@ pytest --cov=src tests/
 
 Run tests in an isolated Docker container using the provided scripts. This ensures a consistent testing environment regardless of your local setup.
 
-#### Using Bash (macOS/Linux):
-
-```bash
-# Run all tests in Docker
-./run-tests.sh
-
-# Run unit tests only
-./run-tests.sh --unit
-
-# Run with coverage
-./run-tests.sh --coverage
-
-# Run specific test file
-./run-tests.sh --specific tests/test_api.py
-
-# Run with code formatting and linting
-./run-tests.sh --format --lint
-
-# Force rebuild the Docker test image
-./run-tests.sh --build
-```
-
-#### Using PowerShell (Windows):
-
-```powershell
-# Run all tests in Docker
-.\Run-Tests.ps1
-
-# Run unit tests only
-.\Run-Tests.ps1 -Unit
-
-# Run with coverage
-.\Run-Tests.ps1 -Coverage
-
-# Run specific test file
-.\Run-Tests.ps1 -Specific tests/test_api.py
-
-# Run with code formatting and linting
-.\Run-Tests.ps1 -Format -Lint
-
-# Force rebuild the Docker test image
-.\Run-Tests.ps1 -Build
-```
+See [RUN_SCRIPTS.md](RUN_SCRIPTS.md) for detailed information on running tests with Docker.
 
 ### Archive-based Testing
 
 Run tests directly from an archive file (tar.gz, tgz, or zip) without unpacking it manually. This is useful for testing released versions of the Chat Server or verifying the integrity of distribution packages.
 
-#### Using Bash (macOS/Linux):
-
-```bash
-# Run all tests from archive
-./run-tests-archive.sh chat-server.tar.gz
-
-# Run unit tests with coverage
-./run-tests-archive.sh --unit --coverage chat-server.zip
-
-# Run specific test
-./run-tests-archive.sh --specific tests/test_api.py chat-server.tgz
-
-# Clean extraction directory before running tests
-./run-tests-archive.sh --clean chat-server.zip
-```
-
-#### Using PowerShell (Windows):
-
-```powershell
-# Run all tests from archive
-.\Run-Tests-Archive.ps1 chat-server.zip
-
-# Run unit tests with coverage
-.\Run-Tests-Archive.ps1 -Unit -Coverage chat-server.zip
-
-# Run specific test
-.\Run-Tests-Archive.ps1 -Specific tests/test_api.py chat-server.zip
-
-# Clean extraction directory before running tests
-.\Run-Tests-Archive.ps1 -Clean chat-server.zip
-```
+See [RUN_SCRIPTS.md](RUN_SCRIPTS.md) for detailed information on the archive testing scripts.
 
 ## License
 
@@ -373,6 +301,7 @@ This project is open-source software available under the [MIT license](LICENSE).
 - **CLAUDE.md**: Project overview and guidelines for Anthropic's Claude when working with this codebase
 - **DOCKER.md**: Detailed Docker deployment guide with configuration examples and security best practices
 - **docker-environments.md**: Example configurations for running Chat Server in different Docker environments
+- **RUN_SCRIPTS.md**: Detailed guide to all run and test scripts for different environments
 - **tests/README.md**: Comprehensive information about the test suite structure and testing strategies
 
 Written by Jeff Lowrey <jeff@jaral.org> with assistance from Anthropic's Claude AI.
