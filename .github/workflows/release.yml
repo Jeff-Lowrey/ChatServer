@@ -55,16 +55,31 @@ jobs:
           echo "RELEASE_FILE=chatserver-${TAG_NAME}.tar.gz" >> $GITHUB_ENV
           echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
 
-      # Set file permissions for the run scripts
-      - name: Set file permissions
+      # Set file permissions and verify run scripts for individual release
+      - name: Prepare Run Scripts for Release
         run: |
+          # Set executable permissions on shell scripts
+          echo "Setting executable permissions on shell scripts"
           chmod +x run-*.sh
           
-          # Debug: List files and permissions
-          echo "Files and permissions:"
+          # Verify all script files exist and show their permissions
+          echo "Verifying script files exist and showing permissions:"
           ls -la run-*.sh Run-*.ps1 RUN_SCRIPTS.md
+          
+          # Verify script content (first few lines)
+          echo "Verifying script content (first few lines):"
+          for script in run-*.sh Run-*.ps1; do
+            echo "=== First 5 lines of $script ==="
+            head -n 5 "$script"
+            echo ""
+          done
+          
+          # Check file sizes to ensure they're not empty
+          echo "File sizes:"
+          du -h run-*.sh Run-*.ps1 RUN_SCRIPTS.md
       
       - name: Create GitHub Release
+        id: create_release
         uses: softprops/action-gh-release@v1
         with:
           files: |
@@ -82,3 +97,13 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Verify Release
+        if: steps.create_release.outcome == 'success'
+        run: |
+          echo "Release created successfully!"
+          echo "Release URL: ${{ steps.create_release.outputs.url }}"
+          echo "Release assets should include:"
+          echo "- chatserver-${TAG_NAME}.tar.gz (main archive)"
+          echo "- All run scripts as individual files"
+          echo "- RUN_SCRIPTS.md as an individual file"
