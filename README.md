@@ -201,7 +201,54 @@ python -m src.main --use-ssl --cert-path /path/to/certificate.pem
 - Docker installed
 - Docker Compose (optional, for easier deployment)
 
-#### Running with Docker Compose
+#### Using Docker Run Scripts
+
+The Chat Server provides convenient scripts for running the server in Docker containers on both Unix-like systems and Windows.
+
+##### Using run-docker.sh (Bash - Linux/macOS)
+
+```bash
+# Build and run with default settings
+./run-docker.sh
+
+# Run with custom ports
+./run-docker.sh --socket-port 9000 --http-port 8080
+
+# Use Docker Compose instead of direct Docker commands
+./run-docker.sh --compose
+
+# Run with SSL enabled
+./run-docker.sh --ssl --cert ./certs/mycert.pem
+
+# Customize container name
+./run-docker.sh --name my-chat-server
+
+# Rebuild the Docker image
+./run-docker.sh --build
+```
+
+##### Using Run-Docker.ps1 (PowerShell - Windows)
+
+```powershell
+# Build and run with default settings
+.\Run-Docker.ps1
+
+# Run with custom ports
+.\Run-Docker.ps1 -SocketPort 9000 -HttpPort 8080
+
+# Use Docker Compose instead of direct Docker commands
+.\Run-Docker.ps1 -Compose
+
+# Run with SSL enabled
+.\Run-Docker.ps1 -SSL -Cert .\certs\mycert.pem
+
+# Customize container name
+.\Run-Docker.ps1 -Name my-chat-server
+```
+
+See [RUN_SCRIPTS.md](RUN_SCRIPTS.md) for more detailed information about the Docker run scripts.
+
+#### Running with Docker Compose Manually
 ```bash
 # Start the server
 docker-compose up -d
@@ -213,7 +260,7 @@ docker-compose logs -f
 docker-compose down
 ```
 
-#### Running with Docker directly
+#### Running with Docker CLI Directly
 ```bash
 # Build the image
 docker build -t chatserver .
