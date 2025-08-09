@@ -49,14 +49,21 @@ param(
     [Parameter(HelpMessage="Skip extraction if directory already exists")]
     [switch]$NoExtract,
     
-    [Parameter(Position=0, Mandatory=$true, HelpMessage="Archive file to extract and run")]
+    [Parameter(HelpMessage="Download and use the latest release from GitHub")]
+    [switch]$Latest,
+    
+    [Parameter(HelpMessage="Specify the GitHub repository (owner/name)")]
+    [string]$Repo = "Jeff-Lowrey/ChatServer",
+    
+    [Parameter(Position=0, HelpMessage="Archive file to extract and run (not required with --latest)")]
     [string]$ArchiveFile
 )
 
 # Print usage information
 function Show-Help {
-    Write-Host "Usage: .\Run-Archive.ps1 [options] <archive-file>"
+    Write-Host "Usage: .\Run-Archive.ps1 [options] [<archive-file>]"
     Write-Host "Extract and run the Chat Server from an archive file (zip, tar.gz, or tgz)."
+    Write-Host "If no archive file is provided and -Latest is used, the latest release will be downloaded."
     Write-Host ""
     Write-Host "Options:"
     Write-Host "  -Help, -h              Show this help message"
@@ -70,6 +77,8 @@ function Show-Help {
     Write-Host "  -VenvPath, -v PATH     Set virtual environment path (default: venv)"
     Write-Host "  -Clean                 Clean extraction directory before extracting"
     Write-Host "  -NoExtract             Skip extraction if directory already exists"
+    Write-Host "  -Latest                Download and use the latest release from GitHub"
+    Write-Host "  -Repo OWNER/NAME       Specify the GitHub repository (default: Jeff-Lowrey/ChatServer)"
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "  .\Run-Archive.ps1 chat-server.zip                 Extract and run with default settings"
@@ -77,12 +86,76 @@ function Show-Help {
     Write-Host "  .\Run-Archive.ps1 -SSL -Cert .\certs\mycert.pem chat-server.zip   Run with SSL enabled"
     Write-Host "  .\Run-Archive.ps1 -Mode http chat-server.zip      Run only the HTTP server"
     Write-Host "  .\Run-Archive.ps1 -Clean chat-server.zip          Clean directory before extraction"
+    Write-Host "  .\Run-Archive.ps1 -Latest                         Download and run the latest release"
+    Write-Host "  .\Run-Archive.ps1 -Latest -Repo username/repo     Download from a custom repository"
 }
 
 # If help was requested, show help and exit
 if ($Help) {
     Show-Help
     exit 0
+}
+
+# Split the repository into owner and name
+$RepoOwner = $Repo.Split('/')[0]
+$RepoName = $Repo.Split('/')[1]
+
+# Check if we need to download the latest release
+if ($Latest) {
+    Write-Host "Downloading latest release from GitHub repository: $Repo"
+    
+    try {
+        # Check if Invoke-RestMethod is available (PowerShell 3.0+)
+        if (-not (Get-Command Invoke-RestMethod -ErrorAction SilentlyContinue)) {
+            throw "PowerShell 3.0 or later is required for downloading releases."
+        }
+        
+        # Get the latest release information
+        $LatestRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -ErrorAction Stop
+        
+        if (-not $LatestRelease) {
+            throw "Could not find latest release."
+        }
+        
+        # Extract the tag name
+        $TagName = $LatestRelease.tag_name
+        Write-Host "Latest release: $TagName"
+        
+        # Find the archive asset (prefer tar.gz but fall back to zip)
+        $Asset = $LatestRelease.assets | Where-Object { $_.name -like "*.tar.gz" } | Select-Object -First 1
+        
+        if (-not $Asset) {
+            # Try to find zip file if no tar.gz
+            $Asset = $LatestRelease.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
+        }
+        
+        if (-not $Asset) {
+            throw "Could not find a valid release asset (tar.gz or zip)."
+        }
+        
+        # Extract the filename and download URL
+        $ArchiveFilename = $Asset.name
+        $DownloadUrl = $Asset.browser_download_url
+        
+        Write-Host "Downloading: $ArchiveFilename from $DownloadUrl"
+        
+        # Download the asset
+        Invoke-WebRequest -Uri $DownloadUrl -OutFile $ArchiveFilename -ErrorAction Stop
+        
+        $ArchiveFile = $ArchiveFilename
+        Write-Host "Download complete: $ArchiveFile"
+    }
+    catch {
+        Write-Host "Error: Failed to download release. $_" -ForegroundColor Red
+        exit 1
+    }
+}
+
+# Check if archive file is provided
+if (-not $ArchiveFile) {
+    Write-Host "Error: Archive file is required unless -Latest is specified." -ForegroundColor Red
+    Show-Help
+    exit 1
 }
 
 # Check if archive file exists
