@@ -23,10 +23,18 @@ jobs:
 
       - name: Create Release Archive
         run: |
+          # Display the tag name from GitHub context
+          echo "Creating release for tag: ${{ github.ref_name }}"
+          
           # Create a temporary directory for the release files
           mkdir -p release_files
+          if [ ! -d "release_files" ]; then
+            echo "::error::Failed to create release_files directory"
+            exit 1
+          fi
           
           # Copy all necessary files excluding run scripts and their documentation
+          echo "Copying files to release directory (excluding run scripts and documentation)..."
           rsync -av \
                     --exclude=".git/" \
                     --exclude=".github/" \
@@ -39,37 +47,104 @@ jobs:
                     --exclude="run-*.sh" \
                     --exclude="Run-*.ps1" \
                     --exclude="RUN_SCRIPTS.md" \
+                    --exclude="CONTRIBUTIONS.md" \
                     --exclude="chatserver-*.tar.gz" \
                     . release_files/
+          
+          # Check if rsync was successful
+          if [ $? -ne 0 ]; then
+            echo "::error::rsync command failed"
+            exit 1
+          fi
           
           # Debug: List files in release_files
           echo "Files to be included in archive:"
           find release_files -type f | sort
           
+          # Check if any files were copied
+          if [ -z "$(find release_files -type f)" ]; then
+            echo "::error::No files were copied to release_files directory"
+            exit 1
+          fi
+          
           # Create tar.gz archive
+          echo "Creating tar.gz archive..."
           cd release_files
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          tar -czf "../chatserver-${TAG_NAME}.tar.gz" .
+          ARCHIVE_NAME="../chatserver-${{ github.ref_name }}.tar.gz"
+          tar -czf "$ARCHIVE_NAME" .
+          if [ $? -ne 0 ]; then
+            echo "::error::Failed to create tar.gz archive"
+            exit 1
+          fi
           cd ..
           
-          echo "RELEASE_FILE=chatserver-${TAG_NAME}.tar.gz" >> $GITHUB_ENV
-          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
+          # Verify archive was created and has content
+          if [ ! -f "chatserver-${{ github.ref_name }}.tar.gz" ]; then
+            echo "::error::Archive file was not created"
+            exit 1
+          fi
+          
+          ARCHIVE_SIZE=$(stat -c%s "chatserver-${{ github.ref_name }}.tar.gz" 2>/dev/null || stat -f%z "chatserver-${{ github.ref_name }}.tar.gz")
+          if [ "$ARCHIVE_SIZE" -lt 1000 ]; then
+            echo "::warning::Archive file is suspiciously small: $ARCHIVE_SIZE bytes"
+          fi
+          
+          echo "Archive created: chatserver-${{ github.ref_name }}.tar.gz ($ARCHIVE_SIZE bytes)"
 
       # Set file permissions and verify run scripts for individual release
       - name: Prepare Run Scripts for Release
         run: |
+          echo "Preparing run scripts for release..."
+          
+          # Check if the script files exist
+          echo "Checking for run script files..."
+          
+          # List of required script files
+          required_files=(
+            "run-archive.sh"
+            "run-docker.sh"
+            "run-tests-archive.sh"
+            "Run-Archive.ps1"
+            "Run-Docker.ps1"
+            "Run-Tests-Archive.ps1"
+            "RUN_SCRIPTS.md"
+          )
+          
+          # Check each required file
+          missing_files=0
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "::error::Required file not found: $file"
+              missing_files=$((missing_files+1))
+            else
+              echo "Found required file: $file"
+            fi
+          done
+          
+          if [ $missing_files -gt 0 ]; then
+            echo "::error::Missing $missing_files required files"
+            exit 1
+          fi
+          
           # Set executable permissions on shell scripts
           echo "Setting executable permissions on shell scripts"
           chmod +x run-*.sh
+          if [ $? -ne 0 ]; then
+            echo "::warning::Failed to set executable permissions"
+          fi
           
           # Verify all script files exist and show their permissions
-          echo "Verifying script files exist and showing permissions:"
+          echo "Verifying script files permissions:"
           ls -la run-*.sh Run-*.ps1 RUN_SCRIPTS.md
           
           # Verify script content (first few lines)
           echo "Verifying script content (first few lines):"
           for script in run-*.sh Run-*.ps1; do
             echo "=== First 5 lines of $script ==="
+            if [ ! -s "$script" ]; then
+              echo "::error::Script file is empty: $script"
+              exit 1
+            fi
             head -n 5 "$script"
             echo ""
           done
@@ -77,13 +152,21 @@ jobs:
           # Check file sizes to ensure they're not empty
           echo "File sizes:"
           du -h run-*.sh Run-*.ps1 RUN_SCRIPTS.md
+          
+          # Additional verification for RUN_SCRIPTS.md
+          if [ ! -s "RUN_SCRIPTS.md" ]; then
+            echo "::error::RUN_SCRIPTS.md is empty"
+            exit 1
+          fi
+          
+          echo "All run script files have been verified and prepared for release"
       
       - name: Create GitHub Release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            ${{ env.RELEASE_FILE }}
+            chatserver-${{ github.ref_name }}.tar.gz
             run-archive.sh
             run-docker.sh
             run-tests-archive.sh
@@ -91,7 +174,25 @@ jobs:
             Run-Docker.ps1
             Run-Tests-Archive.ps1
             RUN_SCRIPTS.md
-          name: ChatServer ${{ env.TAG_NAME }}
+          name: ChatServer ${{ github.ref_name }}
+          body: |
+            # ChatServer ${{ github.ref_name }}
+            
+            This release includes:
+            - The main ChatServer application archive (`chatserver-${{ github.ref_name }}.tar.gz`)
+            - Individual run scripts for Linux/macOS (`.sh` files)
+            - Individual run scripts for Windows (`.ps1` files)
+            - Documentation for all run scripts (`RUN_SCRIPTS.md`)
+            
+            ## Run Scripts
+            
+            Run scripts allow you to easily extract, run, and test the ChatServer:
+            
+            - `run-archive.sh` / `Run-Archive.ps1`: Extract and run the server
+            - `run-tests-archive.sh` / `Run-Tests-Archive.ps1`: Run tests on the archive
+            - `run-docker.sh` / `Run-Docker.ps1`: Run the server in Docker
+            
+            See `RUN_SCRIPTS.md` for detailed usage instructions.
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -99,11 +200,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Verify Release
-        if: steps.create_release.outcome == 'success'
+        if: success()
         run: |
           echo "Release created successfully!"
-          echo "Release URL: ${{ steps.create_release.outputs.url }}"
           echo "Release assets should include:"
-          echo "- chatserver-${TAG_NAME}.tar.gz (main archive)"
+          echo "- chatserver-${{ github.ref_name }}.tar.gz (main archive)"
           echo "- All run scripts as individual files"
           echo "- RUN_SCRIPTS.md as an individual file"
