@@ -13,7 +13,7 @@ These scripts are available for both Unix-like systems (Bash scripts) and Window
 
 ## Archive Run Scripts
 
-These scripts allow you to easily extract and run the Chat Server from a release archive without manually unpacking and configuring the environment. Bash scripts work with tar.gz files, while PowerShell scripts work with ZIP files.
+These scripts allow you to easily extract and run the Chat Server from a release archive without manually unpacking and configuring the environment. Bash scripts work with tar.gz files, while PowerShell scripts work with ZIP files. For convenience, downloaded archives are automatically removed after extraction (this can be disabled with the `--keep-archive` option).
 
 ### run-archive.sh (Bash)
 
@@ -77,7 +77,7 @@ This script extracts and runs the Chat Server from a ZIP archive file on Windows
 
 ## Archive Test Scripts
 
-These scripts allow you to run tests on a Chat Server archive file without manually unpacking and configuring the test environment. Bash scripts work with tar.gz files, while PowerShell scripts work with ZIP files.
+These scripts allow you to run tests on a Chat Server archive file without manually unpacking and configuring the test environment. Bash scripts work with tar.gz files, while PowerShell scripts work with ZIP files. Downloaded archives are automatically removed after extraction to keep your workspace clean (use `--keep-archive` to preserve them).
 
 ### run-tests-archive.sh (Bash)
 
@@ -265,6 +265,7 @@ For scripts that work with archive files:
 
 - `--archive FILE` / `-Archive FILE`: Specify a local archive file to use (tar.gz for Bash scripts, ZIP for PowerShell scripts)
 - `--release TAG` / `-Release TAG`: Specify a specific release tag to download
+- `--keep-archive` / `-KeepArchive`: Keep the archive file after extraction (by default, downloaded archives are automatically removed)
 - No archive parameter: Download and use the latest release automatically (will select the appropriate format based on script type)
 
 ## GitHub Releases

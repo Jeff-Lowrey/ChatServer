@@ -337,7 +337,7 @@ See [RUN_SCRIPTS.md](RUN_SCRIPTS.md) for detailed information on running tests w
 
 ### Archive-based Testing
 
-Run tests directly from an archive file without unpacking it manually. Use bash scripts with tar.gz files on Linux/macOS, or PowerShell scripts with ZIP files on Windows. This is useful for testing released versions of the Chat Server or verifying the integrity of distribution packages.
+Run tests directly from an archive file without unpacking it manually. Use bash scripts with tar.gz files on Linux/macOS, or PowerShell scripts with ZIP files on Windows. For convenience, downloaded archives are automatically removed after extraction (use `--keep-archive` to preserve them). This is useful for testing released versions of the Chat Server or verifying the integrity of distribution packages.
 
 See [RUN_SCRIPTS.md](RUN_SCRIPTS.md) for detailed information on the archive testing scripts.
 
