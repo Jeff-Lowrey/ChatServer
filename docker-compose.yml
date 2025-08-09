@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  chatserver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chatserver:latest
+    container_name: chatserver
+    restart: unless-stopped
+    ports:
+      # Socket server port
+      - "10010:10010"
+      # HTTP server port
+      - "8000:8000"
+    volumes:
+      # Configuration
+      - ./config.properties:/etc/chatserver/config.properties:ro
+      # SSL certificates
+      - ./certs:/app/certs:ro
+      # Logs
+      - ./logs:/app/logs
+    environment:
+      # Override configuration with environment variables if needed
+      - CHAT_SERVER_MODE=both
+      - CHAT_SERVER_MAX_CLIENTS=200
+      # Uncomment to enable SSL
+      # - CHAT_SERVER_USE_SSL=true
+      # - CHAT_SERVER_CERT_PATH=/app/certs/certificate.pem
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - chatnet
+
+networks:
+  chatnet:
+    driver: bridge
