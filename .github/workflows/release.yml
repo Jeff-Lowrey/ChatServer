@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+  packages: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,18 +27,24 @@ jobs:
           mkdir -p release_files
           
           # Copy all necessary files excluding run scripts and their documentation
-          rsync -av --exclude="run-*.sh" \
+          rsync -av \
+                    --exclude=".git/" \
+                    --exclude=".github/" \
+                    --exclude=".vscode/" \
+                    --exclude=".pytest_cache/" \
+                    --exclude=".ruff_cache/" \
+                    --exclude=".venv/" \
+                    --exclude="__pycache__/" \
+                    --exclude="*.pyc" \
+                    --exclude="run-*.sh" \
                     --exclude="Run-*.ps1" \
-                    --exclude=".git" \
-                    --exclude=".github" \
-                    --exclude="run-archive.sh" \
-                    --exclude="run-docker.sh" \
-                    --exclude="run-tests-archive.sh" \
-                    --exclude="Run-Archive.ps1" \
-                    --exclude="Run-Docker.ps1" \
-                    --exclude="Run-Tests-Archive.ps1" \
                     --exclude="RUN_SCRIPTS.md" \
+                    --exclude="chatserver-*.tar.gz" \
                     . release_files/
+          
+          # Debug: List files in release_files
+          echo "Files to be included in archive:"
+          find release_files -type f | sort
           
           # Create tar.gz archive
           cd release_files
@@ -45,6 +55,15 @@ jobs:
           echo "RELEASE_FILE=chatserver-${TAG_NAME}.tar.gz" >> $GITHUB_ENV
           echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
 
+      # Set file permissions for the run scripts
+      - name: Set file permissions
+        run: |
+          chmod +x run-*.sh
+          
+          # Debug: List files and permissions
+          echo "Files and permissions:"
+          ls -la run-*.sh Run-*.ps1 RUN_SCRIPTS.md
+      
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
