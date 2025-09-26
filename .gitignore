@@ -100,3 +100,9 @@ chat-server-extract/
 *.zip
 *.tar
 *.gz
+# Workflow execution cache
+.workflow-cache/
+
+.claude_actions/
+# Project-specific Claude rules
+CLAUDE.md
